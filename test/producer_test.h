@@ -9,6 +9,8 @@
 #include <MESA_handle_logger.h>
 #include "rdkafka.h"
 #include "cJSON.h"
+#include "field_stat2.h"
+
 
 #define MAX_LEN 128
 #define MAX_IP4_LEN 128
@@ -40,6 +42,8 @@ rd_kafka_conf_t * init_kafka_conf(const char * brokers);
 int init_kafka_producer(rd_kafka_t ** rk_producer, rd_kafka_topic_t ** rk_topic, const char * topic_name, const char * brokers);
 void gene_ip(char * ip);
 void create_msg(char * buf);
+screen_stat_handle_t init_stat_handle();
+
 int main();
 
 #ifdef __cplusplus

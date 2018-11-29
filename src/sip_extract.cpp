@@ -33,7 +33,7 @@ int get_ip_idx(char * ip, MMDB_s  mmdb){
 		}
 	}
 	else{
-		fprintf(stderr, "\n No entry for this IP address (%s) was found\n\n", ip);
+		//fprintf(stderr, "\n No entry for this IP address (%s) was found\n\n", ip);
 		return -2;
 	}
 	return 0;
@@ -401,6 +401,7 @@ void delete_node(int cur_time, STNode_v4_t * root){
 			subtree_delete(root->lChild);
 			subtree_delete(root->rChild);
 		}
+		root->used_ip_exist = 0;
 		root->lChild = NULL;
 		root->rChild = NULL;
 	}
@@ -435,16 +436,10 @@ void msg_consume(rd_kafka_message_t * rk_message, STNode_v4_t * * ipv4_std_list,
 			create_node_v6(input_info->ipv6, input_info->gid, ip_valid_time, ipv6_std_list[ip_idx-1]);
 		}
 	}
-	//if ip not in the mmdb
-	else if(-2 == ip_idx){
-		printf(input_info->ip_str);
-	}
-	
 	free(input_info);
 }
 
-void STree_output(STNode_v4_t * root, FILE * fp, uint seg_start_ip, uint seg_end_ip){
-	int cur_time = time((time_t*)NULL);
+void STree_output(STNode_v4_t * root, FILE * fp, uint seg_start_ip, uint seg_end_ip, int cur_time){
     if(root->lChild == NULL && root->rChild == NULL){
 		char result[160] = {0};
 		char unused_ip_start[MAX_IP4_LEN] = {0};
@@ -497,13 +492,12 @@ void STree_output(STNode_v4_t * root, FILE * fp, uint seg_start_ip, uint seg_end
 		fprintf(fp, result);
     }
 	else{
-    	STree_output(root->lChild, fp, seg_start_ip, seg_end_ip);
-    	STree_output(root->rChild, fp, seg_start_ip, seg_end_ip);
+    	STree_output(root->lChild, fp, seg_start_ip, seg_end_ip, cur_time);
+    	STree_output(root->rChild, fp, seg_start_ip, seg_end_ip, cur_time);
 	}
 }
 
-void STree_output_v6(STNode_v6_t * root, FILE * fp, uint128_t seg_start_ip, uint128_t seg_end_ip){
-	int cur_time = time((time_t*)NULL);
+void STree_output_v6(STNode_v6_t * root, FILE * fp, uint128_t seg_start_ip, uint128_t seg_end_ip, int cur_time){
     if(root->lChild == NULL && root->rChild == NULL){
 		char result[160] = {0};
 		char unused_ip_start[MAX_IP6_LEN] = {0};
@@ -558,8 +552,8 @@ void STree_output_v6(STNode_v6_t * root, FILE * fp, uint128_t seg_start_ip, uint
 		fprintf(fp, result);
     }
 	else{
-    	STree_output_v6(root->lChild, fp, seg_start_ip, seg_end_ip);
-    	STree_output_v6(root->rChild, fp, seg_start_ip, seg_end_ip);
+    	STree_output_v6(root->lChild, fp, seg_start_ip, seg_end_ip, cur_time);
+    	STree_output_v6(root->rChild, fp, seg_start_ip, seg_end_ip, cur_time);
 	}
 }
 
@@ -569,11 +563,12 @@ void output_unused_ip(STNode_v4_t * * ipv4_std_list, const int ipv4_list_line_nu
 
 	FILE *fp = NULL;
 	fp = fopen("../src/unused_ipv4.txt", "wb+");
-	int cur_time = time((time_t*)NULL);	
+
+	int cur_time_v4 = time((time_t*)NULL);
 	for(int i = 0; i < ipv4_list_line_num; i ++){
-		if(ipv4_std_list[i]->lChild != NULL){
-			delete_node(cur_time, ipv4_std_list[i]);
-			STree_output(ipv4_std_list[i], fp, ipv4_std_list[i]->start_ip_num, ipv4_std_list[i]->end_ip_num);
+		if(ipv4_std_list[i]->lChild != NULL && ipv4_std_list[i]->valid_time >= cur_time_v4){
+			delete_node(cur_time_v4, ipv4_std_list[i]);
+			STree_output(ipv4_std_list[i], fp, ipv4_std_list[i]->start_ip_num, ipv4_std_list[i]->end_ip_num, cur_time_v4);
 		}
 	}
 
@@ -585,11 +580,11 @@ void output_unused_ip(STNode_v4_t * * ipv4_std_list, const int ipv4_list_line_nu
 	FILE *fp2 = NULL;
 	fp2 = fopen("../src/unused_ipv6.txt", "wb");
 
-	//int cur_time = time((time_t*)NULL);
+	int cur_time_v6 = time((time_t*)NULL);
 	for(int i = 0; i < ipv6_list_line_num; i ++){
-		if(ipv6_std_list[i]->lChild != NULL){
-	//		delete_node(cur_time, ipv6_std_list[i]);
-			STree_output_v6(ipv6_std_list[i], fp2, ipv6_std_list[i]->start_ip_num, ipv6_std_list[i]->end_ip_num);
+		if(ipv6_std_list[i]->lChild != NULL && ipv6_std_list[i]->valid_time >= cur_time_v6){
+			//delete_node(cur_time_v6, ipv6_std_list[i]);
+			STree_output_v6(ipv6_std_list[i], fp2, ipv6_std_list[i]->start_ip_num, ipv6_std_list[i]->end_ip_num, cur_time_v6);
 		}
 	}
 
@@ -604,6 +599,35 @@ void destroy(void * * ip_std_list, int ip_list_line_num, int case_num){
 	for(int i = 0; i < ip_list_line_num; i ++){
 		//free all pointers
 	}
+}
+
+screen_stat_handle_t init_stat_handle(){
+	screen_stat_handle_t handle = NULL;
+	const char * stat_path = "./find_unused_ip.status";
+	const char * app_name = "find_unused_ip";
+	int value = 0;
+
+	handle = FS_create_handle();
+
+	FS_set_para(handle, APP_NAME, app_name, strlen(app_name)+1);
+	value = 0;
+	FS_set_para(handle, FLUSH_BY_DATE, &value, sizeof(value));
+	FS_set_para(handle, OUTPUT_DEVICE, stat_path, strlen(stat_path)+1);
+	value = 1;
+	FS_set_para(handle, PRINT_MODE, &value, sizeof(value));
+	value = 1;
+	FS_set_para(handle, CREATE_THREAD, &value, sizeof(value));
+	value = 2;
+	FS_set_para(handle, STAT_CYCLE, &value, sizeof(value));
+	value = 4096;
+	//FS_set_para(handle, MAX_STAT_FIELD_NUM, &value, sizeof(value));
+	FS_set_para(handle, STATS_SERVER_IP, "127.0.0.1", strlen("127.0.0.1"));
+	value = 8100;
+	FS_set_para(handle, STATS_SERVER_PORT, &value, sizeof(value));
+	//value = FS_OUTPUT_STATSD;
+	//FS_set_para(handle, STATS_FORMAT, &value, sizeof(value));
+
+	return handle;
 }
 
 int main(){
@@ -650,19 +674,31 @@ int main(){
 		exit(1);
 	}
 
+	//field_state init
+	screen_stat_handle_t handle = init_stat_handle();
+	char buff[128];
+	int i = 1;
+	int field_ids;
+
+	snprintf(buff, sizeof(buff), "field_%02d", i);
+	field_ids = FS_register(handle, FS_STYLE_FIELD, FS_CALC_CURRENT, buff);
+	
+
 	output_time = time((time_t *)NULL);
 
 	//read from kafka
 	rd_kafka_t *kafka_consumer;
 	init_kafka_consumer(&kafka_consumer, topic, group_id, brokers);
 
+	FS_start(handle);
 	while(1){
 		rd_kafka_message_t *rk_message;
 		rk_message = rd_kafka_consumer_poll(kafka_consumer, 1000);
 		if(rk_message){
 			if(rk_message->err == RD_KAFKA_RESP_ERR_NO_ERROR){
-				//msg_consume(rk_message, location_list, std_list);
 				msg_consume(rk_message, ipv4_std_list, ipv6_std_list, mmdb_v4, mmdb_v6);
+				//msg_cnt ++;
+				FS_operate(handle, field_ids, 0, FS_OP_ADD, 1);
 				rd_kafka_message_destroy(rk_message);
 			}
 			else{
@@ -676,9 +712,8 @@ int main(){
 			output_unused_ip(ipv4_std_list, ipv4_list_line_num, ipv6_std_list, ipv6_list_line_num);
 			output_time = present_time;
 		}
-		
 	}
-
+	FS_stop(&handle);
 	rd_kafka_destroy(kafka_consumer);
 	MMDB_close(&mmdb_v4);
 	MMDB_close(&mmdb_v6);

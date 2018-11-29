@@ -15,6 +15,7 @@ rd_kafka_conf_t * init_kafka_conf(const char * brokers){
 	rd_kafka_conf_set(conf, "queue.buffering.max.messages", "1000000", errString, sizeof(errString));
 	rd_kafka_conf_set(conf, "topic.metadata.refresh.interval.ms", "600000",errString, sizeof(errString));
 	rd_kafka_conf_set(conf, "security.protocol", "MG", errString, sizeof(errString)); 
+	rd_kafka_conf_set(conf, "batch.num.messages", "1000000", errString, sizeof(errString));
 	return conf;
 }
 
@@ -167,6 +168,36 @@ void create_msg1(char * buf, int cnt){
 	free(ip_log);
 }
 
+screen_stat_handle_t init_stat_handle(){
+	screen_stat_handle_t handle = NULL;
+	const char * stat_path = "./producer_test.status";
+	const char * app_name = "producer_test";
+	int value = 0;
+
+	handle = FS_create_handle();
+
+	FS_set_para(handle, APP_NAME, app_name, strlen(app_name)+1);
+	value = 0;
+	FS_set_para(handle, FLUSH_BY_DATE, &value, sizeof(value));
+	FS_set_para(handle, OUTPUT_DEVICE, stat_path, strlen(stat_path)+1);
+	value = 1;
+	FS_set_para(handle, PRINT_MODE, &value, sizeof(value));
+	value = 1;
+	FS_set_para(handle, CREATE_THREAD, &value, sizeof(value));
+	value = 2;
+	FS_set_para(handle, STAT_CYCLE, &value, sizeof(value));
+	value = 4096;
+	//FS_set_para(handle, MAX_STAT_FIELD_NUM, &value, sizeof(value));
+	FS_set_para(handle, STATS_SERVER_IP, "127.0.0.1", strlen("127.0.0.1"));
+	value = 8100;
+	FS_set_para(handle, STATS_SERVER_PORT, &value, sizeof(value));
+	//value = FS_OUTPUT_STATSD;
+	//FS_set_para(handle, STATS_FORMAT, &value, sizeof(value));
+
+	return handle;
+}
+
+
 int main(){
 
 	rd_kafka_t *rk_producer = NULL;
@@ -204,9 +235,21 @@ int main(){
 	}
 */
 
+//field_state init
+	screen_stat_handle_t handle = init_stat_handle();
+	char buff[128];
+	int i = 1;
+	int field_ids;
+
+	snprintf(buff, sizeof(buff), "field_%02d", i);
+	field_ids = FS_register(handle, FS_STYLE_FIELD, FS_CALC_CURRENT, buff);
+
+
 //certain ip generate : generate two ips from the same ip section
+	FS_start(handle);
 	while(1){
 		create_msg(buf);
+		FS_operate(handle, field_ids, 0, FS_OP_ADD, 1);
 
 		retry:
 			if(rd_kafka_produce(rk_topic, RD_KAFKA_PARTITION_UA, RD_KAFKA_MSG_F_COPY, buf, strlen(buf), NULL, 0, NULL) == -1){
@@ -217,8 +260,9 @@ int main(){
 				}
 			}
 			rd_kafka_poll(rk_producer, 0);
-		usleep(1);
+		//usleep(1);
 	}
+	FS_stop(&handle);
 
 	MESA_handle_runtime_log(rlog_handle, RLOG_LV_FATAL, module_name, "rk_produce error");
 	return 0;

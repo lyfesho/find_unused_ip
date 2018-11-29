@@ -11,6 +11,7 @@
 #include <MESA_handle_logger.h>
 #include "cJSON.h"
 #include "maxminddb.h"
+#include "field_stat2.h"
 
 #define MAX_BROKER_LEN 128
 #define MAX_GROUP_ID_LEN 128
@@ -18,7 +19,8 @@
 #define MAX_PATH_LEN 128
 #define IP_NUM 512
 #define MAX_IP4_LEN 32
-#define MAX_IP6_LEN 128\
+#define MAX_IP6_LEN 128
+#define TEST_FIELD_NUM 1
 
 #define CASE_IPV4 4
 #define CASE_IPV6 6
@@ -104,12 +106,13 @@ void create_node(uint ip_num, int gid, int ip_valid_time, STNode_v4_t * root);
 int ipv6_belong2seg(uint128_t ip_num, uint128_t start_ip_num, uint128_t end_ip_num);
 void create_node_v6(uint128_t ip_num, int gid, int ip_valid_time, STNode_v6_t * root);
 void msg_consume(rd_kafka_message_t * rk_message, STNode_v4_t * * ipv4_std_list, STNode_v6_t * * ipv6_std_list, MMDB_s mmdb_v4, MMDB_s mmdb_v6);
-void STree_output(STNode_v4_t * root, FILE * fp, uint seg_start_ip, uint seg_end_ip);
+void STree_output(STNode_v4_t * root, FILE * fp, uint seg_start_ip, uint seg_end_ip, int cur_time);
 int ipv6_eq(uint128_t src, uint128_t dest);
-void STree_output_v6(STNode_v6_t * root, FILE * fp, uint128_t seg_start_ip, uint128_t seg_end_ip);
+void STree_output_v6(STNode_v6_t * root, FILE * fp, uint128_t seg_start_ip, uint128_t seg_end_ip, int cur_time);
 void output_unused_ip(STNode_v4_t * * ipv4_std_list, const int ipv4_list_line_num, STNode_v6_t * * ipv6_std_list, const int ipv6_list_line_num);
 void destroy(void * * ip_std_list, int ip_list_line_num, int case_num);
 void delete_node(int cur_time, STNode_v4_t * root);
+screen_stat_handle_t init_stat_handle();
 int main();
 #ifdef __cplusplus
 }
